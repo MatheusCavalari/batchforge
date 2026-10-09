@@ -51,6 +51,10 @@ public class JobRegistry {
         return Optional.ofNullable(jobs.get(name));
     }
 
+    public boolean remove(String name) {
+        return jobs.remove(name) != null;
+    }
+
     public List<JobDefinition> listJobs() {
         return List.copyOf(jobs.values());
     }
