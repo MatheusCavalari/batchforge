@@ -63,8 +63,7 @@ public class JobResource {
             throw new IllegalArgumentException(
                 "Job name in body '" + job.name() + "' does not match path '" + name + "'");
         }
-        registry.register(job);
-        if (registry.getJob(name).isEmpty()) {
+        if (!registry.register(job)) {
             throw new IllegalArgumentException("Job '" + name + "' failed DAG validation");
         }
         return Response.ok(new JobDto(job.name(), job.description(), job.schedule(),

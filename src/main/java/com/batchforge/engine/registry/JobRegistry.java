@@ -31,11 +31,11 @@ public class JobRegistry {
         this.repository = repository;
     }
 
-    public void register(JobDefinition job) {
+    public boolean register(JobDefinition job) {
         var errors = validator.validate(job);
         if (!errors.isEmpty()) {
             LOG.warnf("Job '%s' has validation errors: %s", job.name(), errors);
-            return;
+            return false;
         }
         jobs.put(job.name(), job);
         try {
@@ -45,6 +45,7 @@ public class JobRegistry {
             LOG.warnf("Failed to persist job '%s': %s", job.name(), e.getMessage());
         }
         LOG.infof("Registered job '%s' with %d steps", job.name(), job.steps().size());
+        return true;
     }
 
     public Optional<JobDefinition> getJob(String name) {
