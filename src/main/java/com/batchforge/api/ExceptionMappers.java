@@ -18,4 +18,10 @@ public class ExceptionMappers {
         return Response.status(Response.Status.BAD_REQUEST)
             .entity(new ErrorResponse("Validation Error", e.getMessage())).build();
     }
+
+    @ServerExceptionMapper
+    public Response handleIllegalState(IllegalStateException e) {
+        return Response.status(Response.Status.CONFLICT)
+            .entity(new ErrorResponse("Conflict", e.getMessage())).build();
+    }
 }

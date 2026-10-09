@@ -99,6 +99,36 @@ public class JobExecutionRepository {
         }
     }
 
+    public List<JobExecution> findAll(String jobNameFilter, String statusFilter, int limit) {
+        var sql = new StringBuilder("SELECT " + COLS + " FROM job_executions WHERE 1=1");
+        var params = new ArrayList<Object>();
+        if (jobNameFilter != null && !jobNameFilter.isBlank()) {
+            sql.append(" AND job_name = ?");
+            params.add(jobNameFilter);
+        }
+        if (statusFilter != null && !statusFilter.isBlank()) {
+            sql.append(" AND status = ?");
+            params.add(statusFilter);
+        }
+        sql.append(" ORDER BY created_at DESC LIMIT ?");
+        params.add(limit);
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql.toString())) {
+            for (int i = 0; i < params.size(); i++) {
+                Object p = params.get(i);
+                if (p instanceof Integer n) ps.setInt(i + 1, n);
+                else ps.setString(i + 1, (String) p);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                List<JobExecution> out = new ArrayList<>();
+                while (rs.next()) out.add(map(rs));
+                return out;
+            }
+        } catch (SQLException | JsonProcessingException ex) {
+            throw new RepositoryException("Failed to list executions", ex);
+        }
+    }
+
     private JobExecution map(ResultSet rs) throws SQLException, JsonProcessingException {
         String params = rs.getString(4);
         Map<String, Object> parameters = params == null ? Map.of()
