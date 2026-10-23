@@ -4,6 +4,8 @@ import com.batchforge.engine.checkpoint.CheckpointManager;
 import com.batchforge.engine.deadletter.DeadLetterManager;
 import com.batchforge.engine.retry.RetryPolicy;
 import com.batchforge.spi.*;
+import com.batchforge.ws.ExecutionEvent;
+import com.batchforge.ws.ExecutionEventBus;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -15,9 +17,17 @@ public class StepExecutor {
     private final CheckpointManager checkpointManager;
     private final DeadLetterManager deadLetterManager;
 
+    private final ExecutionEventBus eventBus;
+
     public StepExecutor(CheckpointManager checkpointManager, DeadLetterManager deadLetterManager) {
+        this(checkpointManager, deadLetterManager, null);
+    }
+
+    public StepExecutor(CheckpointManager checkpointManager, DeadLetterManager deadLetterManager,
+                        ExecutionEventBus eventBus) {
         this.checkpointManager = checkpointManager;
         this.deadLetterManager = deadLetterManager;
+        this.eventBus = eventBus;
     }
 
     public <I, O> ChunkResult execute(
@@ -87,6 +97,11 @@ public class StepExecutor {
                                 chunkFailed++;
                                 deadLetterManager.send(context.stepExecutionId(), context.stepName(),
                                     result.original(), lastError, attempt);
+                                if (eventBus != null) {
+                                    eventBus.publish(new ExecutionEvent.ItemFailed(context.jobExecutionId(),
+                                        context.stepName(), String.valueOf(result.original()),
+                                        String.valueOf(lastError.getMessage()), attempt, Instant.now()));
+                                }
                             }
                         } else {
                             processed.add(result.value());
@@ -103,6 +118,12 @@ public class StepExecutor {
 
                 currentOffset += chunk.size();
                 checkpointManager.save(context.stepExecutionId(), context.partitionId(), currentOffset, Map.of());
+
+                if (eventBus != null) {
+                    double secs = Math.max(Duration.between(start, Instant.now()).toMillis(), 1) / 1000.0;
+                    eventBus.publish(new ExecutionEvent.ChunkCompleted(context.jobExecutionId(),
+                        context.stepName(), context.partitionId(), currentOffset, totalRead / secs, Instant.now()));
+                }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

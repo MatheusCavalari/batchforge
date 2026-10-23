@@ -8,10 +8,18 @@ import com.batchforge.engine.partition.PartitionManager;
 import com.batchforge.engine.repository.*;
 import com.batchforge.engine.retry.RetryPolicy;
 import com.batchforge.spi.*;
+import com.batchforge.ws.ExecutionEvent;
+import com.batchforge.ws.ExecutionEventBus;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.List;
 import java.util.concurrent.StructuredTaskScope;
 
@@ -25,8 +33,17 @@ public class DagScheduler {
     @Inject DeadLetterManager deadLetterManager;
     @Inject PartitionManager partitionManager;
     @Inject ReaderWriterFactory readerWriterFactory;
+    @Inject ExecutionEventBus eventBus;
+
+    private final Map<UUID, AtomicLong> totalItemsByExec = new ConcurrentHashMap<>();
+
+    private void fire(ExecutionEvent event) {
+        if (eventBus != null) eventBus.publish(event);
+    }
 
     public void execute(JobDefinition jobDef, JobExecution jobExec) {
+        Instant execStart = Instant.now();
+        AtomicLong totalItems = totalItemsByExec.computeIfAbsent(jobExec.id(), _ -> new AtomicLong());
         jobExecRepo.updateStatus(jobExec.id(), new ExecutionStatus.Running());
 
         try {
@@ -40,11 +57,15 @@ public class DagScheduler {
             }
 
             jobExecRepo.updateStatus(jobExec.id(), new ExecutionStatus.Completed());
+            fire(new ExecutionEvent.ExecutionCompleted(jobExec.id(),
+                Duration.between(execStart, Instant.now()).toString(), totalItems.get(), Instant.now()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             jobExecRepo.updateStatus(jobExec.id(), new ExecutionStatus.Failed("Interrupted"));
         } catch (Exception e) {
             jobExecRepo.updateStatus(jobExec.id(), new ExecutionStatus.Failed(e.getMessage()));
+        } finally {
+            totalItemsByExec.remove(jobExec.id());
         }
     }
 
@@ -72,6 +93,8 @@ public class DagScheduler {
 
         var stepExec = stepExecRepo.save(StepExecution.create(jobExec.id(), stepName, "main"));
         stepExecRepo.updateStatus(stepExec.id(), new StepStatus.StepRunning());
+        fire(new ExecutionEvent.StepStarted(jobExec.id(), stepName, Instant.now()));
+        Instant stepStart = Instant.now();
 
         try {
             var ctx = new ExecutionContext(
@@ -84,13 +107,17 @@ public class DagScheduler {
             ItemProcessor processor = readerWriterFactory.createProcessor(stepDef.processorClass());
             RetryPolicy retryPolicy = RetryPolicy.from(stepDef.retry());
 
-            var executor = new StepExecutor(checkpointManager, deadLetterManager);
+            var executor = new StepExecutor(checkpointManager, deadLetterManager, eventBus);
             var result = executor.execute(ctx, reader, processor, writer, stepDef.chunkSize(), retryPolicy);
 
             stepExecRepo.updateProgress(stepExec.id(),
                 result.itemsRead() / Math.max(stepDef.chunkSize(), 1),
                 result.itemsRead(), result.itemsWritten(), result.itemsFailed());
             stepExecRepo.updateStatus(stepExec.id(), new StepStatus.StepCompleted());
+            var counter = totalItemsByExec.get(jobExec.id());
+            if (counter != null) counter.addAndGet(result.itemsWritten());
+            fire(new ExecutionEvent.StepCompleted(jobExec.id(), stepName,
+                Duration.between(stepStart, Instant.now()).toString(), result.itemsWritten(), Instant.now()));
             return true;
         } catch (Exception e) {
             stepExecRepo.updateStatus(stepExec.id(), new StepStatus.StepFailed(e.getMessage()));
