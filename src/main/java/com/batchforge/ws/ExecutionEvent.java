@@ -20,5 +20,5 @@ public sealed interface ExecutionEvent {
                          long itemsProcessed, Instant timestamp) implements ExecutionEvent {}
 
     record ExecutionCompleted(UUID executionId, String duration,
-                              long totalItems, Instant timestamp) implements ExecutionEvent {}
+                              long totalItems, String status, Instant timestamp) implements ExecutionEvent {}
 }

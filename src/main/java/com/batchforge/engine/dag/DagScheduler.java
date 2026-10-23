@@ -52,18 +52,24 @@ public class DagScheduler {
             for (List<String> level : levels) {
                 if (!executeLevel(level, jobDef, jobExec)) {
                     jobExecRepo.updateStatus(jobExec.id(), new ExecutionStatus.Failed("Step failure in level"));
+                    fire(new ExecutionEvent.ExecutionCompleted(jobExec.id(),
+                        Duration.between(execStart, Instant.now()).toString(), totalItems.get(), "FAILED", Instant.now()));
                     return;
                 }
             }
 
             jobExecRepo.updateStatus(jobExec.id(), new ExecutionStatus.Completed());
             fire(new ExecutionEvent.ExecutionCompleted(jobExec.id(),
-                Duration.between(execStart, Instant.now()).toString(), totalItems.get(), Instant.now()));
+                Duration.between(execStart, Instant.now()).toString(), totalItems.get(), "COMPLETED", Instant.now()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             jobExecRepo.updateStatus(jobExec.id(), new ExecutionStatus.Failed("Interrupted"));
+            fire(new ExecutionEvent.ExecutionCompleted(jobExec.id(),
+                Duration.between(execStart, Instant.now()).toString(), totalItems.get(), "FAILED", Instant.now()));
         } catch (Exception e) {
             jobExecRepo.updateStatus(jobExec.id(), new ExecutionStatus.Failed(e.getMessage()));
+            fire(new ExecutionEvent.ExecutionCompleted(jobExec.id(),
+                Duration.between(execStart, Instant.now()).toString(), totalItems.get(), "FAILED", Instant.now()));
         } finally {
             totalItemsByExec.remove(jobExec.id());
         }

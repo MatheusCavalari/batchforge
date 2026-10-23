@@ -15,7 +15,11 @@ public class ExecutionEventBus {
     private final Map<UUID, List<Consumer<ExecutionEvent>>> subscribers = new ConcurrentHashMap<>();
 
     public void subscribe(UUID executionId, Consumer<ExecutionEvent> listener) {
-        subscribers.computeIfAbsent(executionId, _ -> new CopyOnWriteArrayList<>()).add(listener);
+        subscribers.compute(executionId, (_, list) -> {
+            var result = list != null ? list : new CopyOnWriteArrayList<Consumer<ExecutionEvent>>();
+            result.add(listener);
+            return result;
+        });
     }
 
     public void unsubscribe(UUID executionId, Consumer<ExecutionEvent> listener) {

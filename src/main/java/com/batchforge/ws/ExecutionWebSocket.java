@@ -34,7 +34,7 @@ public class ExecutionWebSocket {
         }
         Consumer<ExecutionEvent> listener = event -> {
             try {
-                connection.sendTextAndAwait(mapper.writeValueAsString(toWireFormat(event)));
+                connection.sendText(mapper.writeValueAsString(toWireFormat(event))).subscribe().with(_ -> {}, _ -> {});
             } catch (Exception ignored) {}
         };
         subscriptions.put(connection.id(), new Subscription(executionId, listener));
@@ -49,25 +49,30 @@ public class ExecutionWebSocket {
         }
     }
 
-    record WireEvent(String type, String timestamp, Map<String, Object> data) {}
-
-    static WireEvent toWireFormat(ExecutionEvent event) {
+    static Map<String, Object> toWireFormat(ExecutionEvent event) {
         String ts = event.timestamp().toString();
         return switch (event) {
-            case ExecutionEvent.StepStarted e ->
-                new WireEvent("STEP_STARTED", ts, Map.of("step", e.step()));
-            case ExecutionEvent.ChunkCompleted e ->
-                new WireEvent("CHUNK_COMPLETED", ts, Map.of("step", e.step(), "partition", e.partition(),
-                    "offset", e.offset(), "itemsPerSec", e.itemsPerSec()));
-            case ExecutionEvent.ItemFailed e ->
-                new WireEvent("ITEM_FAILED", ts, Map.of("step", e.step(), "itemId", e.itemId(),
-                    "error", String.valueOf(e.error()), "attempt", e.attempt()));
-            case ExecutionEvent.StepCompleted e ->
-                new WireEvent("STEP_COMPLETED", ts, Map.of("step", e.step(), "duration", e.duration(),
-                    "itemsProcessed", e.itemsProcessed()));
-            case ExecutionEvent.ExecutionCompleted e ->
-                new WireEvent("EXECUTION_COMPLETED", ts, Map.of("duration", e.duration(),
-                    "totalItems", e.totalItems()));
+            case ExecutionEvent.StepStarted e -> Map.of(
+                "type", "STEP_STARTED", "timestamp", ts, "step", e.step());
+            case ExecutionEvent.ChunkCompleted e -> {
+                var map = new java.util.HashMap<String, Object>();
+                map.put("type", "CHUNK_COMPLETED");
+                map.put("timestamp", ts);
+                map.put("step", e.step());
+                map.put("partition", e.partition() != null ? e.partition() : "default");
+                map.put("offset", e.offset());
+                map.put("itemsPerSec", e.itemsPerSec());
+                yield java.util.Collections.unmodifiableMap(map);
+            }
+            case ExecutionEvent.ItemFailed e -> Map.of(
+                "type", "ITEM_FAILED", "timestamp", ts, "step", e.step(),
+                "itemId", e.itemId(), "error", String.valueOf(e.error()), "attempt", e.attempt());
+            case ExecutionEvent.StepCompleted e -> Map.of(
+                "type", "STEP_COMPLETED", "timestamp", ts, "step", e.step(),
+                "duration", e.duration(), "itemsProcessed", e.itemsProcessed());
+            case ExecutionEvent.ExecutionCompleted e -> Map.of(
+                "type", "EXECUTION_COMPLETED", "timestamp", ts, "duration", e.duration(),
+                "totalItems", e.totalItems(), "status", e.status());
         };
     }
 }
