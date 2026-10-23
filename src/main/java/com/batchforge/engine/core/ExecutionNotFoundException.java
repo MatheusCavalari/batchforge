@@ -1,4 +1,4 @@
-package com.batchforge.api;
+package com.batchforge.engine.core;
 
 public class ExecutionNotFoundException extends RuntimeException {
     public ExecutionNotFoundException(String message) {

@@ -1,5 +1,7 @@
 package com.batchforge.engine;
 
+import com.batchforge.engine.core.ExecutionConflictException;
+import com.batchforge.engine.core.ExecutionNotFoundException;
 import com.batchforge.engine.core.ExecutionStatus;
 import com.batchforge.engine.core.JobExecution;
 import com.batchforge.engine.dag.DagScheduler;
@@ -72,11 +74,11 @@ public class BatchForgeEngine {
 
     public void cancelExecution(UUID executionId) {
         var exec = jobExecRepo.findById(executionId)
-            .orElseThrow(() -> new com.batchforge.api.ExecutionNotFoundException("Execution not found: " + executionId));
+            .orElseThrow(() -> new ExecutionNotFoundException("Execution not found: " + executionId));
         if (exec.status() instanceof ExecutionStatus.Completed ||
             exec.status() instanceof ExecutionStatus.Failed ||
             exec.status() instanceof ExecutionStatus.Abandoned) {
-            throw new com.batchforge.api.ExecutionConflictException(
+            throw new ExecutionConflictException(
                 "Cannot cancel execution in " + exec.status().toDbValue() + " state");
         }
         var thread = runningJobs.remove(executionId);
@@ -88,10 +90,10 @@ public class BatchForgeEngine {
 
     public UUID restartExecution(UUID executionId) {
         var exec = jobExecRepo.findById(executionId)
-            .orElseThrow(() -> new com.batchforge.api.ExecutionNotFoundException("Execution not found: " + executionId));
+            .orElseThrow(() -> new ExecutionNotFoundException("Execution not found: " + executionId));
         if (!(exec.status() instanceof ExecutionStatus.Failed) &&
             !(exec.status() instanceof ExecutionStatus.Abandoned)) {
-            throw new com.batchforge.api.ExecutionConflictException("Can only restart FAILED or ABANDONED executions");
+            throw new ExecutionConflictException("Can only restart FAILED or ABANDONED executions");
         }
         return executeJob(exec.jobName(), exec.parameters());
     }

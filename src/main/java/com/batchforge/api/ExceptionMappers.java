@@ -1,6 +1,8 @@
 package com.batchforge.api;
 
 import com.batchforge.api.dto.ErrorResponse;
+import com.batchforge.engine.core.ExecutionConflictException;
+import com.batchforge.engine.core.ExecutionNotFoundException;
 import com.batchforge.yaml.JobValidationException;
 import jakarta.ws.rs.core.Response;
 import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
