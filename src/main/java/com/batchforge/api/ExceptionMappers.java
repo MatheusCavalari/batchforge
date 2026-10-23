@@ -20,7 +20,13 @@ public class ExceptionMappers {
     }
 
     @ServerExceptionMapper
-    public Response handleIllegalState(IllegalStateException e) {
+    public Response handleExecutionNotFound(ExecutionNotFoundException e) {
+        return Response.status(Response.Status.NOT_FOUND)
+            .entity(new ErrorResponse("Not Found", e.getMessage())).build();
+    }
+
+    @ServerExceptionMapper
+    public Response handleExecutionConflict(ExecutionConflictException e) {
         return Response.status(Response.Status.CONFLICT)
             .entity(new ErrorResponse("Conflict", e.getMessage())).build();
     }
