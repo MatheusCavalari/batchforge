@@ -51,6 +51,45 @@ public class DeadLetterRepository {
             ps -> ps.setInt(1, limit));
     }
 
+    public List<DeadLetterItem> findAll(String stepNameFilter, String statusFilter, int limit) {
+        var sql = new StringBuilder("SELECT " + COLS + " FROM dead_letter_items WHERE 1=1");
+        var params = new ArrayList<Object>();
+        if (stepNameFilter != null && !stepNameFilter.isBlank()) {
+            sql.append(" AND step_name = ?");
+            params.add(stepNameFilter);
+        }
+        if (statusFilter != null && !statusFilter.isBlank()) {
+            sql.append(" AND status = ?");
+            params.add(statusFilter);
+        }
+        sql.append(" ORDER BY failed_at DESC LIMIT ?");
+        params.add(limit);
+        return query(sql.toString(), ps -> {
+            for (int i = 0; i < params.size(); i++) {
+                Object p = params.get(i);
+                if (p instanceof Integer n) ps.setInt(i + 1, n);
+                else ps.setString(i + 1, (String) p);
+            }
+        });
+    }
+
+    public Optional<DeadLetterItem> findById(UUID id) {
+        var items = query("SELECT " + COLS + " FROM dead_letter_items WHERE id = ?",
+            ps -> ps.setObject(1, id));
+        return items.isEmpty() ? Optional.empty() : Optional.of(items.getFirst());
+    }
+
+    @Transactional
+    public void delete(UUID id) {
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement("DELETE FROM dead_letter_items WHERE id = ?")) {
+            ps.setObject(1, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RepositoryException("Failed to delete dead letter item " + id, e);
+        }
+    }
+
     @Transactional
     public void updateStatus(UUID itemId, String status) {
         try (Connection c = dataSource.getConnection();
